@@ -670,26 +670,41 @@ function applyTransform(){
 
 function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
 
+let reservedTop = 0, reservedBottom = 0;
+function measureReserved(){
+  const topbarH = document.getElementById('topbar').getBoundingClientRect().height;
+  const rulesH = document.getElementById('rules-banner').getBoundingClientRect().height;
+  const bottomH = document.getElementById('bottombar').getBoundingClientRect().height;
+  reservedTop = topbarH + rulesH + 10;
+  reservedBottom = bottomH + 10;
+}
+
 function constrain(){
   const ww = wrap.clientWidth, wh = wrap.clientHeight;
   const pw = poster.clientWidth * scale, ph = poster.clientHeight * scale;
-  const minTx = Math.min(0, ww - pw);
-  const minTy = Math.min(0, wh - ph);
-  tx = clamp(tx, minTx, 0);
-  ty = clamp(ty, minTy, 0);
+  const availH = Math.max(120, wh - reservedTop - reservedBottom);
+  if(pw <= ww){ tx = (ww - pw)/2; } else { tx = clamp(tx, ww - pw, 0); }
+  if(ph <= availH){
+    ty = reservedTop + (availH - ph)/2;
+  } else {
+    ty = clamp(ty, wh - reservedBottom - ph, reservedTop);
+  }
 }
 
 function fitToScreen(){
+  measureReserved();
   const ww = wrap.clientWidth, wh = wrap.clientHeight;
   const iw = poster.naturalWidth, ih = poster.naturalHeight;
   const displayW = poster.clientWidth || 1400;
   const displayH = displayW * (ih/iw);
+  const availH = Math.max(120, wh - reservedTop - reservedBottom);
+
   const scaleToFitW = ww / displayW;
-  const scaleToFitH = wh / displayH;
-  minScale = Math.max(scaleToFitW, scaleToFitH) * 0.98;
+  const scaleToFitH = availH / displayH;
+  minScale = Math.min(scaleToFitW, scaleToFitH);
   scale = minScale;
   tx = (ww - displayW*scale)/2;
-  ty = (wh - displayH*scale)*0.12;
+  ty = reservedTop + (availH - displayH*scale)/2;
   applyTransform();
 }
 
@@ -716,9 +731,8 @@ window.addEventListener('load', ()=>{
 });
 window.addEventListener('resize', fitToScreen);
 
-/* ---- Pointer-based pan + pinch zoom (touch & mouse) ---- */
-let pointers = new Map();
-let lastDist = null, lastMid = null;
+/* ---- 縮放平移：手機用原生 Touch Events（比 Pointer Events 在 iOS 多指手勢更穩定可靠），
+   桌機另外用 Mouse Events + 滾輪 ---- */
 let dragging = false, dragStart = null;
 let downPoint = null, suppressClick = false;
 let rafPending = false;
@@ -741,7 +755,7 @@ function startMomentum(vx, vy){
     lastT = now;
     tx += vx * dt;
     ty += vy * dt;
-    const friction = Math.pow(0.0025, dt/1000); // strong, smooth deceleration
+    const friction = Math.pow(0.0025, dt/1000);
     vx *= friction; vy *= friction;
     constrain();
     applyTransform();
@@ -753,36 +767,68 @@ function startMomentum(vx, vy){
   }
   momentumRAF = requestAnimationFrame(step);
 }
-
 function dist(p1,p2){ return Math.hypot(p1.x-p2.x, p1.y-p2.y); }
 function mid(p1,p2){ return {x:(p1.x+p2.x)/2, y:(p1.y+p2.y)/2}; }
-
-wrap.addEventListener('pointerdown', e=>{
-  wrap.setPointerCapture(e.pointerId);
-  stopMomentum();
-  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
-  if(pointers.size === 1){
-    dragging = true;
-    dragStart = {x:e.clientX - tx, y:e.clientY - ty};
-    downPoint = {x:e.clientX, y:e.clientY};
-    suppressClick = false;
-    moveHistory = [{x:e.clientX, y:e.clientY, t:performance.now()}];
-  } else if(pointers.size === 2){
-    dragging = false;
-    const pts = [...pointers.values()];
-    lastDist = dist(pts[0], pts[1]);
-    lastMid = mid(pts[0], pts[1]);
+function trackMove(x,y){
+  const now = performance.now();
+  moveHistory.push({x,y,t:now});
+  while(moveHistory.length > 2 && now - moveHistory[0].t > 80){ moveHistory.shift(); }
+}
+function releaseMomentum(){
+  if(moveHistory.length >= 2){
+    const first = moveHistory[0], last = moveHistory[moveHistory.length-1];
+    const dt = last.t - first.t;
+    if(dt > 0 && dt < 200){
+      const vx = (last.x-first.x)/dt, vy = (last.y-first.y)/dt;
+      if(Math.hypot(vx,vy) > 0.05) startMomentum(vx, vy);
+    }
   }
-});
+}
+function zoomAtPoint(newScaleRaw, localX, localY, animate){
+  const newScale = clamp(newScaleRaw, minScale, maxScale);
+  const worldX = (localX - tx)/scale, worldY = (localY - ty)/scale;
+  tx = localX - worldX*newScale;
+  ty = localY - worldY*newScale;
+  scale = newScale;
+  constrain();
+  if(animate){
+    stage.style.transition = 'transform .3s ease';
+    applyTransform();
+    setTimeout(()=> stage.style.transition = '', 320);
+  } else {
+    applyTransform();
+  }
+}
 
-wrap.addEventListener('pointermove', e=>{
-  if(!pointers.has(e.pointerId)) return;
-  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+let lastDist = null;
+let lastTapTime = 0, lastTapPos = null;
 
-  if(pointers.size === 2){
-    const pts = [...pointers.values()];
-    const d = dist(pts[0], pts[1]);
-    const m = mid(pts[0], pts[1]);
+/* --- Touch (mobile) --- */
+wrap.addEventListener('touchstart', e=>{
+  stopMomentum();
+  if(e.touches.length === 1){
+    const t = e.touches[0];
+    dragging = true;
+    dragStart = {x:t.clientX - tx, y:t.clientY - ty};
+    downPoint = {x:t.clientX, y:t.clientY};
+    suppressClick = false;
+    moveHistory = [{x:t.clientX, y:t.clientY, t:performance.now()}];
+    lastDist = null;
+  } else if(e.touches.length >= 2){
+    dragging = false;
+    suppressClick = true;
+    const [t1,t2] = e.touches;
+    lastDist = dist({x:t1.clientX,y:t1.clientY}, {x:t2.clientX,y:t2.clientY});
+  }
+}, {passive:true});
+
+wrap.addEventListener('touchmove', e=>{
+  e.preventDefault();
+  if(e.touches.length >= 2){
+    const [t1,t2] = e.touches;
+    const p1 = {x:t1.clientX,y:t1.clientY}, p2 = {x:t2.clientX,y:t2.clientY};
+    const d = dist(p1,p2);
+    const m = mid(p1,p2);
     if(lastDist){
       const factor = d / lastDist;
       const newScale = clamp(scale * factor, minScale, maxScale);
@@ -795,109 +841,107 @@ wrap.addEventListener('pointermove', e=>{
       constrain();
       scheduleRender();
     }
-    lastDist = d; lastMid = m;
-  } else if(pointers.size === 1 && dragging){
-    tx = e.clientX - dragStart.x;
-    ty = e.clientY - dragStart.y;
+    lastDist = d;
+  } else if(e.touches.length === 1 && dragging){
+    const t = e.touches[0];
+    tx = t.clientX - dragStart.x;
+    ty = t.clientY - dragStart.y;
     constrain();
     scheduleRender();
-    if(downPoint && Math.hypot(e.clientX-downPoint.x, e.clientY-downPoint.y) > 6){
+    if(downPoint && Math.hypot(t.clientX-downPoint.x, t.clientY-downPoint.y) > 6){
       suppressClick = true;
     }
-    const now = performance.now();
-    moveHistory.push({x:e.clientX, y:e.clientY, t:now});
-    while(moveHistory.length > 2 && now - moveHistory[0].t > 80){
-      moveHistory.shift();
-    }
+    trackMove(t.clientX, t.clientY);
   }
-});
+}, {passive:false});
 
-function endPointer(e){
-  const wasSinglePointerDrag = pointers.size === 1 && dragging;
-  pointers.delete(e.pointerId);
-  if(pointers.size < 2){ lastDist = null; }
-  if(pointers.size === 1){
-    const [p] = [...pointers.values()];
-    dragging = true;
-    dragStart = {x:p.x - tx, y:p.y - ty};
-    moveHistory = [{x:p.x, y:p.y, t:performance.now()}];
-  }
-  if(pointers.size === 0){
+function touchEndHandler(e){
+  const remaining = e.touches.length;
+  if(remaining >= 2){
+    const [t1,t2] = e.touches;
+    lastDist = dist({x:t1.clientX,y:t1.clientY}, {x:t2.clientX,y:t2.clientY});
     dragging = false;
-    if(wasSinglePointerDrag && moveHistory.length >= 2){
-      const first = moveHistory[0];
-      const last = moveHistory[moveHistory.length-1];
-      const dt = last.t - first.t;
-      if(dt > 0 && dt < 200){
-        const vx = (last.x - first.x) / dt;
-        const vy = (last.y - first.y) / dt;
-        if(Math.hypot(vx,vy) > 0.05){
-          startMomentum(vx, vy);
-        }
+  } else if(remaining === 1){
+    const t = e.touches[0];
+    dragging = true;
+    dragStart = {x:t.clientX - tx, y:t.clientY - ty};
+    moveHistory = [{x:t.clientX, y:t.clientY, t:performance.now()}];
+    lastDist = null;
+  } else {
+    if(dragging) releaseMomentum();
+    dragging = false;
+    lastDist = null;
+
+    // double-tap to zoom（僅在單指輕點、非拖曳、非雙指縮放後觸發）
+    if(!suppressClick && e.changedTouches.length === 1){
+      const t = e.changedTouches[0];
+      const now = Date.now();
+      if(now - lastTapTime < 320 && lastTapPos && dist(lastTapPos,{x:t.clientX,y:t.clientY}) < 30){
+        const rect = wrap.getBoundingClientRect();
+        const localX = t.clientX - rect.left, localY = t.clientY - rect.top;
+        const target = scale < (minScale*1.8) ? minScale*3 : minScale;
+        zoomAtPoint(target, localX, localY, true);
+        lastTapTime = 0;
+      } else {
+        lastTapTime = now;
+        lastTapPos = {x:t.clientX, y:t.clientY};
       }
     }
   }
 }
-wrap.addEventListener('pointerup', endPointer);
-wrap.addEventListener('pointercancel', endPointer);
-wrap.addEventListener('pointerleave', endPointer);
+wrap.addEventListener('touchend', touchEndHandler, {passive:true});
+wrap.addEventListener('touchcancel', touchEndHandler, {passive:true});
 
-/* double-tap / double-click to zoom */
-let lastTap = 0;
-wrap.addEventListener('pointerup', e=>{
-  const now = Date.now();
-  if(now - lastTap < 300 && pointers.size === 0){
-    stopMomentum();
-    const rect = wrap.getBoundingClientRect();
-    const localX = e.clientX - rect.left, localY = e.clientY - rect.top;
-    const worldX = (localX - tx)/scale, worldY = (localY - ty)/scale;
-    const newScale = scale < (minScale*1.8) ? clamp(minScale*3, minScale, maxScale) : minScale;
-    tx = localX - worldX*newScale;
-    ty = localY - worldY*newScale;
-    scale = newScale;
-    constrain();
-    stage.style.transition = 'transform .3s ease';
-    applyTransform();
-    setTimeout(()=> stage.style.transition = '', 320);
+/* --- Mouse (desktop) --- */
+wrap.addEventListener('mousedown', e=>{
+  stopMomentum();
+  dragging = true;
+  dragStart = {x:e.clientX - tx, y:e.clientY - ty};
+  downPoint = {x:e.clientX, y:e.clientY};
+  suppressClick = false;
+  moveHistory = [{x:e.clientX, y:e.clientY, t:performance.now()}];
+});
+window.addEventListener('mousemove', e=>{
+  if(!dragging) return;
+  tx = e.clientX - dragStart.x;
+  ty = e.clientY - dragStart.y;
+  constrain();
+  scheduleRender();
+  if(downPoint && Math.hypot(e.clientX-downPoint.x, e.clientY-downPoint.y) > 6){
+    suppressClick = true;
   }
-  lastTap = now;
+  trackMove(e.clientX, e.clientY);
+});
+window.addEventListener('mouseup', ()=>{
+  if(dragging) releaseMomentum();
+  dragging = false;
+});
+wrap.addEventListener('dblclick', e=>{
+  const rect = wrap.getBoundingClientRect();
+  const localX = e.clientX - rect.left, localY = e.clientY - rect.top;
+  const target = scale < (minScale*1.8) ? minScale*3 : minScale;
+  zoomAtPoint(target, localX, localY, true);
 });
 
-/* mouse wheel zoom (desktop testing) */
+/* mouse wheel zoom (desktop) */
 wrap.addEventListener('wheel', e=>{
   e.preventDefault();
   stopMomentum();
   const rect = wrap.getBoundingClientRect();
   const localX = e.clientX - rect.left, localY = e.clientY - rect.top;
-  const worldX = (localX - tx)/scale, worldY = (localY - ty)/scale;
   const delta = -e.deltaY * 0.0015;
-  const newScale = clamp(scale * (1+delta), minScale, maxScale);
-  tx = localX - worldX*newScale;
-  ty = localY - worldY*newScale;
-  scale = newScale;
-  constrain();
-  applyTransform();
+  zoomAtPoint(scale * (1+delta), localX, localY, false);
 }, {passive:false});
 
 document.getElementById('zoom-in').addEventListener('click', ()=>{
   stopMomentum();
   const ww=wrap.clientWidth, wh=wrap.clientHeight;
-  const newScale = clamp(scale*1.4, minScale, maxScale);
-  tx = ww/2 - (ww/2 - tx)/scale*newScale;
-  ty = wh/2 - (wh/2 - ty)/scale*newScale;
-  scale = newScale; constrain();
-  stage.style.transition='transform .25s ease'; applyTransform();
-  setTimeout(()=>stage.style.transition='',260);
+  zoomAtPoint(scale*1.4, ww/2, wh/2, true);
 });
 document.getElementById('zoom-out').addEventListener('click', ()=>{
   stopMomentum();
   const ww=wrap.clientWidth, wh=wrap.clientHeight;
-  const newScale = clamp(scale/1.4, minScale, maxScale);
-  tx = ww/2 - (ww/2 - tx)/scale*newScale;
-  ty = wh/2 - (wh/2 - ty)/scale*newScale;
-  scale = newScale; constrain();
-  stage.style.transition='transform .25s ease'; applyTransform();
-  setTimeout(()=>stage.style.transition='',260);
+  zoomAtPoint(scale/1.4, ww/2, wh/2, true);
 });
 document.getElementById('zoom-reset').addEventListener('click', ()=>{
   stopMomentum();
@@ -912,6 +956,7 @@ document.getElementById('reward-close').addEventListener('click', ()=>{
 
 document.getElementById('rules-toggle').addEventListener('click', ()=>{
   document.getElementById('rules-banner').classList.toggle('expanded');
+  setTimeout(measureReserved, 320);
 });
 
 setTimeout(()=>{ document.getElementById('hint').style.opacity = 0; }, 3800);
