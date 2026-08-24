@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>嘉義藝術體驗聯盟｜城市紋理圖鑑集點</title>
+<meta name="description" content="嘉義藝術體驗聯盟 城市紋理圖鑑2026 線上集點地圖">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700;900&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0d0c10;
+    --paper: #17151a;
+    --gold: #c7a35c;
+    --gold-bright: #ffd76a;
+    --magenta: #c23f83;
+    --teal: #6f9d94;
+    --ink: #f4efe4;
+    --ink-dim: #b8b1a5;
+    --danger: #d9534f;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+  html,body{
+    margin:0; padding:0; height:100%; width:100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family:"Noto Sans TC", sans-serif;
+    overflow:hidden;
+    overscroll-behavior:none;
+  }
+  #stage-wrap{
+    position:fixed; inset:0;
+    touch-action:none;
+    background:
+      radial-gradient(circle at 50% 30%, #201c22 0%, #0d0c10 70%);
+  }
+  #stage{
+    position:absolute; top:0; left:0;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+  #poster{
+    display:block;
+    width: 1400px;
+    max-width:none;
+    user-select:none;
+    -webkit-user-drag:none;
+    pointer-events:none;
+  }
+  .spot{
+    position:absolute;
+    border-radius: 6px;
+    overflow:hidden;
+    cursor:pointer;
+    box-shadow: 0 0 0 0 rgba(255,215,106,0);
+    transition: box-shadow .4s ease;
+  }
+  .spot.collected{
+    box-shadow: 0 0 0 3px var(--gold-bright), 0 0 22px 6px rgba(255,215,106,.55);
+    animation: pulseGlow 2.6s ease-in-out infinite;
+  }
+  .mask{
+    position:absolute; inset:0;
+    border-radius: 6px;
+    background-repeat:no-repeat;
+    filter: grayscale(1) brightness(.32) contrast(.75) blur(2.5px);
+    transition: opacity .7s ease, filter .7s ease;
+    pointer-events:none;
+  }
+  .mask::after{
+    content:"";
+    position:absolute; inset:0;
+    background: rgba(6,5,7,.55);
+    border-radius: 6px;
+  }
+  .spot.collected .mask{
+    opacity:0;
+  }
+  @keyframes pulseGlow{
+    0%,100%{ box-shadow: 0 0 0 3px var(--gold-bright), 0 0 16px 4px rgba(255,215,106,.4);}
+    50%{ box-shadow: 0 0 0 3px var(--gold-bright), 0 0 26px 10px rgba(255,215,106,.7);}
+  }
+  .badge{
+    position:absolute;
+    top:-6px; right:-6px;
+    width: 22%;
+    max-width:28px; min-width:16px;
+    aspect-ratio:1/1;
+    transform: scale(0);
+    opacity:0;
+    pointer-events:none;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,.5));
+  }
+  .spot.collected .badge{
+    animation: badgeIn .5s cubic-bezier(.2,1.6,.4,1) forwards;
+  }
+  @keyframes badgeIn{
+    0%{ transform: scale(0); opacity:0; }
+    60%{ transform: scale(1.25); opacity:1; }
+    100%{ transform: scale(1); opacity:1; }
+  }
+  .zoom-hint{
+    position:absolute; right:4px; bottom:4px;
+    width:18px; height:18px;
+    opacity:0; transition: opacity .3s ease;
+    pointer-events:none;
+    filter: drop-shadow(0 1px 3px rgba(0,0,0,.6));
+  }
+  .spot.collected .zoom-hint{ opacity:.85; }
+
+  /* Top bar */
+  #topbar{
+    position:fixed; top:0; left:0; right:0;
+    padding: calc(12px + var(--safe-top)) 16px 12px;
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    background: linear-gradient(to bottom, rgba(13,12,16,.92), rgba(13,12,16,0));
+    pointer-events:none;
+    z-index:20;
+  }
+  #brand{
+    font-family:"Noto Serif TC", serif;
+    font-weight:900;
+    font-size: 15px;
+    letter-spacing:.06em;
+    color: var(--ink);
+    line-height:1.3;
+    text-shadow: 0 2px 6px rgba(0,0,0,.6);
+  }
+  #brand small{
+    display:block;
+    font-family:"Noto Sans TC", sans-serif;
+    font-weight:500;
+    font-size:10.5px;
+    color: var(--gold);
+    letter-spacing:.14em;
+  }
+  #progress-pill{
+    pointer-events:auto;
+    display:flex; align-items:center; gap:8px;
+    background: rgba(23,21,26,.85);
+    border: 1px solid rgba(199,163,92,.5);
+    border-radius: 999px;
+    padding: 7px 14px 7px 10px;
+    backdrop-filter: blur(6px);
+  }
+  #progress-ring{ width:26px; height:26px; flex:none; }
+  #progress-text{
+    font-weight:700; font-size:13px; letter-spacing:.02em; white-space:nowrap;
+  }
+  #progress-text b{ color: var(--gold-bright); font-size:15px; }
+
+  /* Rules banner */
+  #rules-banner{
+    position:fixed; left:0; right:0;
+    top: calc(56px + var(--safe-top));
+    z-index:19;
+    padding: 0 12px;
+    pointer-events:none;
+  }
+  #rules-toggle{
+    pointer-events:auto;
+    display:block; width:100%;
+    text-align:left;
+    background: linear-gradient(135deg, rgba(194,63,131,.28), rgba(23,21,26,.88));
+    border: 1px solid rgba(199,163,92,.55);
+    border-radius: 12px;
+    padding: 9px 34px 9px 12px;
+    position:relative;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 8px 20px rgba(0,0,0,.35);
+  }
+  .rules-main{
+    display:block;
+    font-family:"Noto Serif TC", serif;
+    font-weight:700;
+    font-size: 12.5px;
+    line-height:1.5;
+    color: var(--gold-bright);
+  }
+  .rules-sub{
+    display:block;
+    font-size: 10.5px;
+    line-height:1.5;
+    color: var(--ink-dim);
+    margin-top:3px;
+  }
+  .rules-chevron{
+    position:absolute; right:10px; top:50%;
+    transform: translateY(-50%);
+    color: var(--gold);
+    font-size:12px;
+    transition: transform .3s ease;
+  }
+  #rules-banner:not(.expanded) .rules-sub{ display:none; }
+  #rules-banner:not(.expanded) .rules-main{
+    display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  #rules-banner:not(.expanded) .rules-chevron{ transform: translateY(-50%) rotate(180deg); }
+
+  /* Toast */
+  #toast{
+    position:fixed; left:50%; top:18%;
+    transform: translate(-50%, -12px);
+    z-index: 40;
+    display:flex; align-items:center; gap:10px;
+    background: linear-gradient(135deg, #2a2330, #17151a);
+    border:1px solid var(--gold);
+    color:var(--ink);
+    padding: 12px 20px 12px 14px;
+    border-radius: 14px;
+    box-shadow: 0 12px 30px rgba(0,0,0,.5), 0 0 0 1px rgba(199,163,92,.15) inset;
+    opacity:0; pointer-events:none;
+    transition: opacity .35s ease, transform .35s ease;
+    max-width: 86vw;
+  }
+  #toast.show{ opacity:1; transform: translate(-50%, 0); }
+  #toast .seal{
+    flex:none; width:34px; height:34px;
+  }
+  #toast .msg strong{
+    display:block; font-family:"Noto Serif TC",serif; font-weight:900; font-size:14px; color: var(--gold-bright);
+  }
+  #toast .msg span{ font-size:12px; color:var(--ink-dim); }
+
+  /* Bottom controls */
+  #bottombar{
+    position:fixed; left:0; right:0; bottom:0;
+    padding: 10px 14px calc(12px + var(--safe-bottom));
+    display:flex; align-items:flex-end; justify-content:space-between; gap:10px;
+    background: linear-gradient(to top, rgba(13,12,16,.94), rgba(13,12,16,0));
+    z-index:20;
+    pointer-events:none;
+  }
+  .round-btn{
+    pointer-events:auto;
+    width:44px; height:44px; border-radius:50%;
+    background: rgba(23,21,26,.85);
+    border:1px solid rgba(199,163,92,.5);
+    color: var(--ink);
+    font-size:20px; font-weight:700;
+    display:flex; align-items:center; justify-content:center;
+    backdrop-filter: blur(6px);
+  }
+  #zoom-controls{ display:flex; flex-direction:column; gap:8px; }
+  #hint{
+    pointer-events:none;
+    align-self:center;
+    font-size:11.5px; color: var(--ink-dim);
+    background: rgba(23,21,26,.7);
+    border-radius:999px;
+    padding:6px 12px;
+    letter-spacing:.03em;
+    opacity: 1;
+    transition: opacity .6s ease;
+  }
+  #reward{
+    position:fixed; inset:0; z-index:60;
+    display:none; align-items:center; justify-content:center;
+    background: rgba(8,7,9,.86);
+    backdrop-filter: blur(3px);
+    padding: 24px;
+  }
+  #reward.show{ display:flex; }
+  #reward .card{
+    background: linear-gradient(160deg, #201c22, #141216);
+    border: 1px solid var(--gold);
+    border-radius: 20px;
+    padding: 34px 26px;
+    max-width: 340px;
+    text-align:center;
+    box-shadow: 0 20px 60px rgba(0,0,0,.6);
+  }
+  #reward h2{
+    font-family:"Noto Serif TC",serif; font-size:22px; margin:14px 0 8px; color:var(--gold-bright);
+  }
+  #reward p{ font-size:13.5px; color:var(--ink-dim); line-height:1.7; margin: 0 0 20px;}
+  #reward button{
+    background: var(--gold-bright); color:#231a0c; border:none;
+    font-weight:900; font-size:14px; padding:12px 26px; border-radius:999px;
+    letter-spacing:.05em;
+  }
+
+  /* Store info modal (未集點時點擊) */
+  #info-modal{
+    position:fixed; inset:0; z-index:55;
+    display:none; align-items:center; justify-content:center;
+    background: rgba(8,7,9,.82);
+    backdrop-filter: blur(3px);
+    padding: 24px;
+  }
+  #info-modal.show{ display:flex; }
+  #info-modal .card{
+    background: linear-gradient(160deg, #201c22, #141216);
+    border: 1px solid rgba(199,163,92,.6);
+    border-radius: 18px;
+    padding: 26px 22px 22px;
+    max-width: 320px; width:100%;
+    text-align:left;
+    box-shadow: 0 20px 60px rgba(0,0,0,.6);
+  }
+  #info-modal .lock-row{
+    display:flex; align-items:center; gap:8px;
+    color: var(--ink-dim); font-size:11px; letter-spacing:.06em;
+    margin-bottom:10px;
+  }
+  #info-modal h3{
+    font-family:"Noto Serif TC", serif; font-size:18px; margin:0 0 14px; color: var(--gold-bright);
+    line-height:1.4;
+  }
+  #info-modal .field{
+    display:flex; gap:8px; margin-bottom:10px; font-size:13px; color: var(--ink); line-height:1.6;
+  }
+  #info-modal .field .k{ flex:none; color: var(--gold); width:44px; font-weight:700; }
+  #info-modal .field .v{ color: var(--ink); }
+  #info-modal .hint-row{
+    margin-top:16px; font-size:11px; color: var(--ink-dim); text-align:center;
+    border-top:1px dashed rgba(199,163,92,.3); padding-top:12px;
+  }
+  #info-modal button{
+    display:block; margin: 16px auto 0;
+    background: transparent; color: var(--ink-dim); border:1px solid rgba(184,177,165,.4);
+    font-size:12.5px; padding:9px 22px; border-radius:999px;
+  }
+
+  /* Lightbox (已集點時點擊，看清楚完整照片) */
+  #lightbox{
+    position:fixed; inset:0; z-index:70;
+    display:none; align-items:center; justify-content:center;
+    background: rgba(4,3,5,.94);
+    padding: 20px;
+    touch-action: pinch-zoom pan-x pan-y;
+  }
+  #lightbox.show{ display:flex; }
+  #lightbox .frame{
+    width:100%; max-width: 520px;
+  }
+  #lightbox img{
+    display:block; width:100%; border-radius: 10px;
+    box-shadow: 0 0 0 1px rgba(199,163,92,.5), 0 20px 60px rgba(0,0,0,.7);
+  }
+  #lightbox .caption{
+    text-align:center; margin-top:14px;
+    font-family:"Noto Serif TC", serif; font-weight:700; font-size:15px; color: var(--gold-bright);
+  }
+  #lightbox-close{
+    position:absolute; top: calc(16px + var(--safe-top)); right:16px;
+    width:38px; height:38px; border-radius:50%;
+    background: rgba(23,21,26,.85); border:1px solid rgba(199,163,92,.5);
+    color: var(--ink); font-size:18px;
+  }
+
+  /* Dev test drawer */
+  #devtab{
+    position:fixed; right:10px; bottom: calc(64px + var(--safe-bottom));
+    z-index:25; pointer-events:auto;
+    font-size:11px;
+  }
+  #devtoggle{
+    background: rgba(23,21,26,.85); border:1px dashed rgba(199,163,92,.5);
+    color: var(--ink-dim); border-radius:8px; padding:6px 10px;
+  }
+  #devpanel{
+    display:none;
+    position:absolute; right:0; bottom:34px;
+    width: 240px; max-height: 55vh; overflow:auto;
+    background: rgba(15,13,17,.97); border:1px solid rgba(199,163,92,.4);
+    border-radius:10px; padding:8px;
+  }
+  #devpanel.show{ display:block; }
+  #devpanel .row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:5px 4px; border-bottom:1px dashed rgba(255,255,255,.08);
+    font-size:11px; color:var(--ink-dim);
+  }
+  #devpanel button{
+    background: rgba(199,163,92,.15); border:1px solid var(--gold);
+    color: var(--gold-bright); font-size:10.5px; padding:3px 8px; border-radius:6px;
+  }
+  #devpanel .row.done{ color: var(--gold-bright); }
+  #devreset{ width:100%; margin-top:6px; background:rgba(217,83,79,.15); border:1px solid var(--danger); color:#ff9b98; padding:6px; border-radius:6px; font-size:11px;}
+</style>
+</head>
+<body>
+
+<div id="stage-wrap">
+  <div id="stage">
+    <img id="poster" src="map.jpg" alt="嘉義藝術體驗聯盟 城市紋理圖鑑2026" draggable="false">
+    <div id="spots"></div>
+  </div>
+</div>
+
+<div id="topbar">
+  <div id="brand">嘉義藝術體驗聯盟<small>城市紋理圖鑑 2026・圖鑑尋寶</small></div>
+  <div id="progress-pill">
+    <svg id="progress-ring" viewBox="0 0 36 36">
+      <circle cx="18" cy="18" r="15.5" fill="none" stroke="rgba(199,163,92,.25)" stroke-width="3"/>
+      <circle id="ring-fg" cx="18" cy="18" r="15.5" fill="none" stroke="#ffd76a" stroke-width="3"
+        stroke-linecap="round" stroke-dasharray="97.4" stroke-dashoffset="97.4"
+        transform="rotate(-90 18 18)"/>
+    </svg>
+    <div id="progress-text"><b id="count-num">0</b>/22 已集點</div>
+  </div>
+</div>
+
+<div id="rules-banner" class="expanded">
+  <button id="rules-toggle" aria-label="收合/展開玩法說明">
+    <span class="rules-main">集滿以下 22 家聯盟店家的圖鑑，可憑本頁至【三宅一室】兌換實體城市紋理圖鑑一張！</span>
+    <span class="rules-sub">兌換時間請參考三宅一室公告至營業時間。兌換期限至 2026/10/31。</span>
+    <span class="rules-chevron">︿</span>
+  </button>
+</div>
+
+<div id="toast">
+  <svg class="seal" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="none" stroke="#ffd76a" stroke-width="3"/><path d="M20 33l8 8 16-18" fill="none" stroke="#ffd76a" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <div class="msg"><strong id="toast-title">集點成功！</strong><span id="toast-sub"></span></div>
+</div>
+
+<div id="bottombar">
+  <div id="zoom-controls">
+    <button class="round-btn" id="zoom-in" aria-label="放大">＋</button>
+    <button class="round-btn" id="zoom-out" aria-label="縮小">－</button>
+  </div>
+  <div id="hint">雙指縮放・拖曳移動・雙擊快速放大</div>
+  <button class="round-btn" id="zoom-reset" aria-label="回到全覽">⟲</button>
+</div>
+
+<div id="reward">
+  <div class="card">
+    <svg width="56" height="56" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="none" stroke="#ffd76a" stroke-width="3"/><path d="M20 33l8 8 16-18" fill="none" stroke="#ffd76a" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <h2>圖鑑完成！</h2>
+    <p>22 個城市紋理站點已全數點亮。<br>請將此畫面出示給任一合作店家，兌換完成禮。</p>
+    <button id="reward-close">回到地圖</button>
+  </div>
+</div>
+
+<div id="info-modal">
+  <div class="card">
+    <div class="lock-row">🔒 尚未集點</div>
+    <h3 id="info-name"></h3>
+    <div class="field"><span class="k">地址</span><span class="v" id="info-address"></span></div>
+    <div class="field"><span class="k">時間</span><span class="v" id="info-hours"></span></div>
+    <div class="hint-row">前往店家完成體驗、掃描現場 QR code 即可解鎖照片</div>
+    <button id="info-close">關閉</button>
+  </div>
+</div>
+
+<div id="lightbox">
+  <button id="lightbox-close" aria-label="關閉">✕</button>
+  <div class="frame">
+    <img id="lightbox-img" src="" alt="">
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+</div>
+
+<div id="devtab">
+  <button id="devtoggle">🧪 測試模擬</button>
+  <div id="devpanel"></div>
+</div>
+
+<script>
+/* ===================== 站點資料（依海報實際位置換算百分比座標） ===================== */
+const SPOTS = [
+  {id:1,  name:"美街藝廊",                         left:8.382, top:25.383, w:14.194, h:10.097,
+    address:"嘉義市東區中央里成仁街160號一樓", hours:"一二三四五六 08:30-21:30／日 09:30-16:00"},
+  {id:2,  name:"Supiido",                          left:25.538,top:25.383, w:14.194, h:10.097,
+    address:"嘉義市東區中央里北榮街50號一樓", hours:"一二四五六日 08:00-14:00"},
+  {id:3,  name:"水母麥酒人",                        left:42.638,top:25.383, w:14.194, h:10.097,
+    address:"嘉義市東區華南里維新路9號一樓", hours:"二三四五六 19:00-00:00"},
+  {id:4,  name:"台灣圖書室",                        left:59.793,top:25.383, w:14.194, h:10.097,
+    address:"嘉義市東區中央里中山路255號", hours:"三四五六日 14:00-21:00"},
+  {id:5,  name:"告解嗜 Confessional Savor",          left:76.921,top:25.383, w:14.194, h:10.097,
+    address:"嘉義市東區中央里北榮街44巷1號", hours:"五六日 11:30-14:30、17:30-20:30"},
+  {id:6,  name:"咖啡一派",                          left:8.382, top:39.773, w:14.194, h:10.097,
+    address:"嘉義市西區書院里西門街152號一樓", hours:"一三四五六日 11:00-18:00"},
+  {id:7,  name:"鼻孔先生",                          left:25.538,top:39.773, w:14.194, h:10.097,
+    address:"嘉義市東區北門里北門街73號一樓", hours:"一二五六日 08:00-14:30"},
+  {id:8,  name:"腦子布",                            left:42.638,top:39.773, w:14.194, h:10.097,
+    address:"嘉義市東區林森里長榮街118號一樓", hours:"三四五六日 13:00-19:00"},
+  {id:9,  name:"嘉義舊監獄 P1919 ISLAND販售部",       left:59.793,top:39.773, w:14.194, h:10.097,
+    address:"嘉義市東區太平里維新路140號（國定古蹟嘉義舊監獄園區內）", hours:"三四五六日 09:30-12:00、13:00-17:00"},
+  {id:10, name:"天才美術社",                        left:76.921,top:39.773, w:14.194, h:10.097,
+    address:"嘉義市東區中山里啟明路271號一樓", hours:"一二三四五六 09:00-21:00／日 13:00-20:00"},
+  {id:11, name:"諸羅設計塾",                        left:8.382, top:54.204, w:14.194, h:10.097,
+    address:"嘉義市東區北門里興中街200-1號二樓", hours:"一二三四五 10:00-19:00（依IG公告為準，每月公休日詳見行事曆）"},
+  {id:12, name:"朝海鍊框店",                        left:25.538,top:54.204, w:14.194, h:10.097,
+    address:"嘉義市東區中央里公明路243號一樓", hours:"一二三四五六 09:00-18:00"},
+  {id:13, name:"Coffee Pantry",                    left:42.638,top:54.204, w:14.194, h:10.097,
+    address:"嘉義市東區中央里興中街134號一樓", hours:"一二三五六日 11:00-18:00"},
+  {id:14, name:"Palette Matcha",                   left:59.793,top:54.204, w:14.194, h:10.097,
+    address:"嘉義市東區中央里北榮街41號", hours:"三四五六日 12:00-18:00"},
+  {id:15, name:"二皿 Ershen",                       left:76.921,top:54.204, w:14.194, h:10.097,
+    address:"嘉義市東區過溝里成仁街70號一樓", hours:"一二三四五六日 12:00-19:00"},
+  {id:16, name:"老鄉與香 Siang",                     left:8.382, top:68.674, w:14.194, h:10.097,
+    address:"嘉義市東區北門里興中街184號", hours:"三四五六日 13:00-18:00"},
+  {id:17, name:"曹璃玻璃藝術空間",                    left:25.538,top:68.674, w:14.194, h:10.097,
+    address:"嘉義市西區書院里蘭井街352號", hours:"預約制"},
+  {id:18, name:"萬花工坊 WonderflorCrafts",          left:42.638,top:68.674, w:14.194, h:10.097,
+    address:"嘉義市西區文化里西公有零售市場文創類第五區第21號", hours:"預約制"},
+  {id:19, name:"三宅一室",                          left:59.793,top:68.674, w:14.194, h:10.097,
+    address:"嘉義市西區北榮里國華街407號", hours:"一三四五 11:00-18:00／六 11:00-21:00"},
+  {id:20, name:"高地物堂 × 野fun兒童創意製造所",       left:76.921,top:68.674, w:14.194, h:10.097,
+    address:"嘉義市東區林森里共和路420號一樓", hours:"一二三四五六 12:00-18:00"},
+  {id:21, name:"口袋派對會所",                       left:34.088,top:82.985, w:14.194, h:10.097,
+    address:"嘉義市東區朝陽里朝陽街55號一樓", hours:"一二三四五六日 10:00-20:30"},
+  {id:22, name:"走心畫所",                          left:51.215,top:82.985, w:14.194, h:10.097,
+    address:"嘉義市東區過溝里延平街249號", hours:"一二四五六日 13:00-21:00（以IG官方限動為準，建議體驗前三天預約）"},
+];
+const TOTAL = SPOTS.length;
+
+/* ===================== 狀態（純前端 Demo：重整頁面即清空，不接資料庫） ===================== */
+let collected = new Set();
+
+/* ===================== 產生站點覆蓋層 =====================
+   每個站點疊一塊「同一張海報圖、但套灰階濾鏡」的遮罩，
+   用 background-position 精準對齊到該站點在整張圖上的位置，
+   集點前顯示灰霧遮罩、集點後淡出露出原本全彩照片。
+*/
+const CANVAS_W = 1400;               // 對應 #poster 的顯示寬度（見 CSS）
+const CANVAS_H = CANVAS_W * (5031/3579); // 依海報原始比例換算顯示高度
+
+const spotsLayer = document.getElementById('spots');
+SPOTS.forEach(s=>{
+  const el = document.createElement('div');
+  el.className = 'spot';
+  el.id = 'spot-'+s.id;
+  el.style.left = s.left+'%';
+  el.style.top = s.top+'%';
+  el.style.width = s.w+'%';
+  el.style.height = s.h+'%';
+
+  const mask = document.createElement('div');
+  mask.className = 'mask';
+  mask.style.backgroundImage = "url('map.jpg')";
+  mask.style.backgroundSize = CANVAS_W+'px '+CANVAS_H+'px';
+  mask.style.backgroundPosition = (-(s.left/100*CANVAS_W))+'px '+(-(s.top/100*CANVAS_H))+'px';
+  el.appendChild(mask);
+
+  const badge = document.createElement('div');
+  badge.className = 'badge';
+  badge.innerHTML = '<svg viewBox="0 0 64 64" width="100%" height="100%"><circle cx="32" cy="32" r="29" fill="#17151a" stroke="#ffd76a" stroke-width="4"/><path d="M19 33l8 8 17-19" fill="none" stroke="#ffd76a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  el.appendChild(badge);
+
+  const zoomHint = document.createElement('div');
+  zoomHint.className = 'zoom-hint';
+  zoomHint.innerHTML = '<svg viewBox="0 0 24 24" width="100%" height="100%" fill="none"><circle cx="10" cy="10" r="6.5" stroke="#ffd76a" stroke-width="2"/><path d="M14.5 14.5L20 20" stroke="#ffd76a" stroke-width="2" stroke-linecap="round"/><path d="M10 7.5v5M7.5 10h5" stroke="#ffd76a" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  el.appendChild(zoomHint);
+
+  el.addEventListener('click', ()=>{
+    if(suppressClick) return;
+    if(collected.has(s.id)){
+      openLightbox(s);
+    } else {
+      openInfo(s);
+    }
+  });
+
+  spotsLayer.appendChild(el);
+});
+
+function openInfo(spot){
+  document.getElementById('info-name').textContent = spot.name;
+  document.getElementById('info-address').textContent = spot.address || '待確認';
+  document.getElementById('info-hours').textContent = spot.hours || '待確認';
+  document.getElementById('info-modal').classList.add('show');
+}
+document.getElementById('info-close').addEventListener('click', ()=>{
+  document.getElementById('info-modal').classList.remove('show');
+});
+document.getElementById('info-modal').addEventListener('click', e=>{
+  if(e.target.id === 'info-modal') e.currentTarget.classList.remove('show');
+});
+
+function openLightbox(spot){
+  const img = document.getElementById('lightbox-img');
+  img.src = 'photos/' + String(spot.id).padStart(2,'0') + '.jpg';
+  img.alt = spot.name;
+  document.getElementById('lightbox-caption').textContent = spot.name;
+  document.getElementById('lightbox').classList.add('show');
+}
+document.getElementById('lightbox-close').addEventListener('click', ()=>{
+  document.getElementById('lightbox').classList.remove('show');
+});
+document.getElementById('lightbox').addEventListener('click', e=>{
+  if(e.target.id === 'lightbox') e.currentTarget.classList.remove('show');
+});
+
+function updateProgress(){
+  document.getElementById('count-num').textContent = collected.size;
+  const ring = document.getElementById('ring-fg');
+  const circumference = 97.4;
+  const offset = circumference - (collected.size/TOTAL)*circumference;
+  ring.style.strokeDashoffset = offset;
+  if(collected.size >= TOTAL){
+    setTimeout(()=> document.getElementById('reward').classList.add('show'), 500);
+  }
+}
+
+let toastTimer = null;
+function showToast(name){
+  const t = document.getElementById('toast');
+  document.getElementById('toast-title').textContent = '集點成功！';
+  document.getElementById('toast-sub').textContent = name;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> t.classList.remove('show'), 2400);
+}
+
+function markCollected(id, {silent=false, focus=false} = {}){
+  const spot = SPOTS.find(s=>s.id===id);
+  if(!spot) return false;
+  const el = document.getElementById('spot-'+id);
+  const already = collected.has(id);
+  collected.add(id);
+  if(el) el.classList.add('collected');
+  updateProgress();
+  if(!already && !silent) showToast(spot.name);
+  if(focus && el) focusOnSpot(spot);
+  refreshDevPanel();
+  return !already;
+}
+
+/* ===================== 從網址參數判斷本次掃到哪個地點 =====================
+   例如： https://yourdomain/?loc=05  →  第 5 號站點亮起
+   （22 個地點各自對應一組 QR code 網址，?loc= 後面接 1~22）
+*/
+function handleIncomingURL(){
+  const params = new URLSearchParams(location.search);
+  const loc = params.get('loc');
+  if(loc){
+    const id = parseInt(loc, 10);
+    if(id >= 1 && id <= TOTAL){
+      markCollected(id, {focus:true});
+    }
+  }
+}
+
+/* ===================== 縮放平移（手機優化：雙指縮放、拖曳、雙擊、滾輪） ===================== */
+const wrap = document.getElementById('stage-wrap');
+const stage = document.getElementById('stage');
+const poster = document.getElementById('poster');
+
+let scale = 1, minScale = 1, maxScale = 6;
+let tx = 0, ty = 0;
+
+function applyTransform(){
+  stage.style.transform = `translate3d(${tx}px, ${ty}px, 0) scale(${scale})`;
+}
+
+function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+function constrain(){
+  const ww = wrap.clientWidth, wh = wrap.clientHeight;
+  const pw = poster.clientWidth * scale, ph = poster.clientHeight * scale;
+  const minTx = Math.min(0, ww - pw);
+  const minTy = Math.min(0, wh - ph);
+  tx = clamp(tx, minTx, 0);
+  ty = clamp(ty, minTy, 0);
+}
+
+function fitToScreen(){
+  const ww = wrap.clientWidth, wh = wrap.clientHeight;
+  const iw = poster.naturalWidth, ih = poster.naturalHeight;
+  const displayW = poster.clientWidth || 1400;
+  const displayH = displayW * (ih/iw);
+  const scaleToFitW = ww / displayW;
+  const scaleToFitH = wh / displayH;
+  minScale = Math.max(scaleToFitW, scaleToFitH) * 0.98;
+  scale = minScale;
+  tx = (ww - displayW*scale)/2;
+  ty = (wh - displayH*scale)*0.12;
+  applyTransform();
+}
+
+function focusOnSpot(spot){
+  const ww = wrap.clientWidth, wh = wrap.clientHeight;
+  const displayW = poster.clientWidth;
+  const displayH = displayW * (poster.naturalHeight/poster.naturalWidth);
+  const targetScale = clamp(2.4, minScale, maxScale);
+  const cx = (spot.left + spot.w/2)/100 * displayW;
+  const cy = (spot.top + spot.h/2)/100 * displayH;
+  scale = targetScale;
+  tx = ww/2 - cx*scale;
+  ty = wh/2 - cy*scale;
+  constrain();
+  stage.style.transition = 'transform .55s cubic-bezier(.2,.8,.2,1)';
+  applyTransform();
+  setTimeout(()=>{ stage.style.transition = ''; }, 600);
+}
+
+window.addEventListener('load', ()=>{
+  if(poster.complete){ fitToScreen(); handleIncomingURL(); }
+  else poster.onload = ()=>{ fitToScreen(); handleIncomingURL(); };
+});
+window.addEventListener('resize', fitToScreen);
+
+/* ---- Pointer-based pan + pinch zoom (touch & mouse) ---- */
+let pointers = new Map();
+let lastDist = null, lastMid = null;
+let dragging = false, dragStart = null;
+let downPoint = null, suppressClick = false;
+
+function dist(p1,p2){ return Math.hypot(p1.x-p2.x, p1.y-p2.y); }
+function mid(p1,p2){ return {x:(p1.x+p2.x)/2, y:(p1.y+p2.y)/2}; }
+
+wrap.addEventListener('pointerdown', e=>{
+  wrap.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(pointers.size === 1){
+    dragging = true;
+    dragStart = {x:e.clientX - tx, y:e.clientY - ty};
+    downPoint = {x:e.clientX, y:e.clientY};
+    suppressClick = false;
+  } else if(pointers.size === 2){
+    dragging = false;
+    const pts = [...pointers.values()];
+    lastDist = dist(pts[0], pts[1]);
+    lastMid = mid(pts[0], pts[1]);
+  }
+});
+
+wrap.addEventListener('pointermove', e=>{
+  if(!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+
+  if(pointers.size === 2){
+    const pts = [...pointers.values()];
+    const d = dist(pts[0], pts[1]);
+    const m = mid(pts[0], pts[1]);
+    if(lastDist){
+      const factor = d / lastDist;
+      const newScale = clamp(scale * factor, minScale, maxScale);
+      const rect = wrap.getBoundingClientRect();
+      const localX = m.x - rect.left, localY = m.y - rect.top;
+      const worldX = (localX - tx)/scale, worldY = (localY - ty)/scale;
+      tx = localX - worldX*newScale;
+      ty = localY - worldY*newScale;
+      scale = newScale;
+      constrain();
+      applyTransform();
+    }
+    lastDist = d; lastMid = m;
+  } else if(pointers.size === 1 && dragging){
+    tx = e.clientX - dragStart.x;
+    ty = e.clientY - dragStart.y;
+    constrain();
+    applyTransform();
+    if(downPoint && Math.hypot(e.clientX-downPoint.x, e.clientY-downPoint.y) > 6){
+      suppressClick = true;
+    }
+  }
+});
+
+function endPointer(e){
+  pointers.delete(e.pointerId);
+  if(pointers.size < 2){ lastDist = null; }
+  if(pointers.size === 1){
+    const [p] = [...pointers.values()];
+    dragging = true;
+    dragStart = {x:p.x - tx, y:p.y - ty};
+  }
+  if(pointers.size === 0){ dragging = false; }
+}
+wrap.addEventListener('pointerup', endPointer);
+wrap.addEventListener('pointercancel', endPointer);
+wrap.addEventListener('pointerleave', endPointer);
+
+/* double-tap / double-click to zoom */
+let lastTap = 0;
+wrap.addEventListener('pointerup', e=>{
+  const now = Date.now();
+  if(now - lastTap < 300 && pointers.size === 0){
+    const rect = wrap.getBoundingClientRect();
+    const localX = e.clientX - rect.left, localY = e.clientY - rect.top;
+    const worldX = (localX - tx)/scale, worldY = (localY - ty)/scale;
+    const newScale = scale < (minScale*1.8) ? clamp(minScale*3, minScale, maxScale) : minScale;
+    tx = localX - worldX*newScale;
+    ty = localY - worldY*newScale;
+    scale = newScale;
+    constrain();
+    stage.style.transition = 'transform .3s ease';
+    applyTransform();
+    setTimeout(()=> stage.style.transition = '', 320);
+  }
+  lastTap = now;
+});
+
+/* mouse wheel zoom (desktop testing) */
+wrap.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const rect = wrap.getBoundingClientRect();
+  const localX = e.clientX - rect.left, localY = e.clientY - rect.top;
+  const worldX = (localX - tx)/scale, worldY = (localY - ty)/scale;
+  const delta = -e.deltaY * 0.0015;
+  const newScale = clamp(scale * (1+delta), minScale, maxScale);
+  tx = localX - worldX*newScale;
+  ty = localY - worldY*newScale;
+  scale = newScale;
+  constrain();
+  applyTransform();
+}, {passive:false});
+
+document.getElementById('zoom-in').addEventListener('click', ()=>{
+  const ww=wrap.clientWidth, wh=wrap.clientHeight;
+  const newScale = clamp(scale*1.4, minScale, maxScale);
+  tx = ww/2 - (ww/2 - tx)/scale*newScale;
+  ty = wh/2 - (wh/2 - ty)/scale*newScale;
+  scale = newScale; constrain();
+  stage.style.transition='transform .25s ease'; applyTransform();
+  setTimeout(()=>stage.style.transition='',260);
+});
+document.getElementById('zoom-out').addEventListener('click', ()=>{
+  const ww=wrap.clientWidth, wh=wrap.clientHeight;
+  const newScale = clamp(scale/1.4, minScale, maxScale);
+  tx = ww/2 - (ww/2 - tx)/scale*newScale;
+  ty = wh/2 - (wh/2 - ty)/scale*newScale;
+  scale = newScale; constrain();
+  stage.style.transition='transform .25s ease'; applyTransform();
+  setTimeout(()=>stage.style.transition='',260);
+});
+document.getElementById('zoom-reset').addEventListener('click', ()=>{
+  stage.style.transition='transform .35s ease';
+  fitToScreen();
+  setTimeout(()=>stage.style.transition='',360);
+});
+
+document.getElementById('reward-close').addEventListener('click', ()=>{
+  document.getElementById('reward').classList.remove('show');
+});
+
+document.getElementById('rules-toggle').addEventListener('click', ()=>{
+  document.getElementById('rules-banner').classList.toggle('expanded');
+});
+
+setTimeout(()=>{ document.getElementById('hint').style.opacity = 0; }, 3800);
+
+/* ===================== 開發測試面板（正式上線前可整段刪除） ===================== */
+const devToggle = document.getElementById('devtoggle');
+const devPanel = document.getElementById('devpanel');
+function refreshDevPanel(){
+  if(!devPanel.classList.contains('show')) return;
+  devPanel.innerHTML = SPOTS.map(s=>{
+    const done = collected.has(s.id);
+    return `<div class="row ${done?'done':''}">
+      <span>${String(s.id).padStart(2,'0')} ${s.name.slice(0,8)}</span>
+      <button data-id="${s.id}">${done?'✓':'模擬'}</button>
+    </div>`;
+  }).join('') + `<button id="devreset">清空全部（僅本次）</button>`;
+  devPanel.querySelectorAll('button[data-id]').forEach(b=>{
+    b.addEventListener('click', ()=> markCollected(parseInt(b.dataset.id,10), {focus:true}));
+  });
+  document.getElementById('devreset').addEventListener('click', ()=>{
+    collected.clear();
+    document.querySelectorAll('.spot').forEach(el=>el.classList.remove('collected'));
+    updateProgress();
+    refreshDevPanel();
+  });
+}
+devToggle.addEventListener('click', ()=>{
+  devPanel.classList.toggle('show');
+  refreshDevPanel();
+});
+</script>
+</body>
+</html>
