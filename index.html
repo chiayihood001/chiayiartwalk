@@ -33,6 +33,8 @@
   #stage-wrap{
     position:fixed; inset:0;
     touch-action:none;
+    user-select:none;
+    -webkit-user-select:none;
     background:
       radial-gradient(circle at 50% 30%, #201c22 0%, #0d0c10 70%);
   }
@@ -54,6 +56,7 @@
     border-radius: 6px;
     overflow:hidden;
     cursor:pointer;
+    contain: layout style paint;
     box-shadow: 0 0 0 0 rgba(255,215,106,0);
     transition: box-shadow .4s ease;
   }
@@ -73,14 +76,13 @@
     position:absolute; inset:0;
     border-radius: 6px;
     background-repeat:no-repeat;
-    filter: grayscale(1) brightness(.32) contrast(.75) blur(2.5px);
-    transition: opacity .7s ease, filter .7s ease;
+    transition: opacity .7s ease;
     pointer-events:none;
   }
   .mask::after{
     content:"";
     position:absolute; inset:0;
-    background: rgba(6,5,7,.55);
+    background: rgba(6,5,7,.4);
     border-radius: 6px;
   }
   .spot.collected .mask{
@@ -546,7 +548,7 @@ SPOTS.forEach(s=>{
 
   const mask = document.createElement('div');
   mask.className = 'mask';
-  mask.style.backgroundImage = "url('map.jpg')";
+  mask.style.backgroundImage = "url('map-fog.jpg')";
   mask.style.backgroundSize = CANVAS_W+'px '+CANVAS_H+'px';
   mask.style.backgroundPosition = (-(s.left/100*CANVAS_W))+'px '+(-(s.top/100*CANVAS_H))+'px';
   el.appendChild(mask);
