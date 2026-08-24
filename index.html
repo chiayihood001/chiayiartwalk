@@ -61,6 +61,14 @@
     box-shadow: 0 0 0 3px var(--gold-bright), 0 0 22px 6px rgba(255,215,106,.55);
     animation: pulseGlow 2.6s ease-in-out infinite;
   }
+  .reveal-img{
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    object-fit:cover;
+    border-radius:6px;
+    display:block;
+    background:#0d0c10;
+  }
   .mask{
     position:absolute; inset:0;
     border-radius: 6px;
@@ -530,6 +538,12 @@ SPOTS.forEach(s=>{
   el.style.width = s.w+'%';
   el.style.height = s.h+'%';
 
+  const reveal = document.createElement('img');
+  reveal.className = 'reveal-img';
+  reveal.alt = s.name;
+  reveal.dataset.src = 'photos/' + String(s.id).padStart(2,'0') + '.jpg';
+  el.appendChild(reveal);
+
   const mask = document.createElement('div');
   mask.className = 'mask';
   mask.style.backgroundImage = "url('map.jpg')";
@@ -613,7 +627,11 @@ function markCollected(id, {silent=false, focus=false} = {}){
   const el = document.getElementById('spot-'+id);
   const already = collected.has(id);
   collected.add(id);
-  if(el) el.classList.add('collected');
+  if(el){
+    el.classList.add('collected');
+    const revealEl = el.querySelector('.reveal-img');
+    if(revealEl && !revealEl.src) revealEl.src = revealEl.dataset.src;
+  }
   updateProgress();
   if(!already && !silent) showToast(spot.name);
   if(focus && el) focusOnSpot(spot);
@@ -674,6 +692,7 @@ function fitToScreen(){
 }
 
 function focusOnSpot(spot){
+  stopMomentum();
   const ww = wrap.clientWidth, wh = wrap.clientHeight;
   const displayW = poster.clientWidth;
   const displayH = displayW * (poster.naturalHeight/poster.naturalWidth);
@@ -700,18 +719,52 @@ let pointers = new Map();
 let lastDist = null, lastMid = null;
 let dragging = false, dragStart = null;
 let downPoint = null, suppressClick = false;
+let rafPending = false;
+function scheduleRender(){
+  if(!rafPending){
+    rafPending = true;
+    requestAnimationFrame(()=>{ applyTransform(); rafPending = false; });
+  }
+}
+let moveHistory = [];
+let momentumRAF = null;
+function stopMomentum(){
+  if(momentumRAF){ cancelAnimationFrame(momentumRAF); momentumRAF = null; }
+}
+function startMomentum(vx, vy){
+  stopMomentum();
+  let lastT = performance.now();
+  function step(now){
+    const dt = Math.min(32, now - lastT);
+    lastT = now;
+    tx += vx * dt;
+    ty += vy * dt;
+    const friction = Math.pow(0.0025, dt/1000); // strong, smooth deceleration
+    vx *= friction; vy *= friction;
+    constrain();
+    applyTransform();
+    if(Math.hypot(vx,vy) > 0.02){
+      momentumRAF = requestAnimationFrame(step);
+    } else {
+      momentumRAF = null;
+    }
+  }
+  momentumRAF = requestAnimationFrame(step);
+}
 
 function dist(p1,p2){ return Math.hypot(p1.x-p2.x, p1.y-p2.y); }
 function mid(p1,p2){ return {x:(p1.x+p2.x)/2, y:(p1.y+p2.y)/2}; }
 
 wrap.addEventListener('pointerdown', e=>{
   wrap.setPointerCapture(e.pointerId);
+  stopMomentum();
   pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
   if(pointers.size === 1){
     dragging = true;
     dragStart = {x:e.clientX - tx, y:e.clientY - ty};
     downPoint = {x:e.clientX, y:e.clientY};
     suppressClick = false;
+    moveHistory = [{x:e.clientX, y:e.clientY, t:performance.now()}];
   } else if(pointers.size === 2){
     dragging = false;
     const pts = [...pointers.values()];
@@ -738,29 +791,50 @@ wrap.addEventListener('pointermove', e=>{
       ty = localY - worldY*newScale;
       scale = newScale;
       constrain();
-      applyTransform();
+      scheduleRender();
     }
     lastDist = d; lastMid = m;
   } else if(pointers.size === 1 && dragging){
     tx = e.clientX - dragStart.x;
     ty = e.clientY - dragStart.y;
     constrain();
-    applyTransform();
+    scheduleRender();
     if(downPoint && Math.hypot(e.clientX-downPoint.x, e.clientY-downPoint.y) > 6){
       suppressClick = true;
+    }
+    const now = performance.now();
+    moveHistory.push({x:e.clientX, y:e.clientY, t:now});
+    while(moveHistory.length > 2 && now - moveHistory[0].t > 80){
+      moveHistory.shift();
     }
   }
 });
 
 function endPointer(e){
+  const wasSinglePointerDrag = pointers.size === 1 && dragging;
   pointers.delete(e.pointerId);
   if(pointers.size < 2){ lastDist = null; }
   if(pointers.size === 1){
     const [p] = [...pointers.values()];
     dragging = true;
     dragStart = {x:p.x - tx, y:p.y - ty};
+    moveHistory = [{x:p.x, y:p.y, t:performance.now()}];
   }
-  if(pointers.size === 0){ dragging = false; }
+  if(pointers.size === 0){
+    dragging = false;
+    if(wasSinglePointerDrag && moveHistory.length >= 2){
+      const first = moveHistory[0];
+      const last = moveHistory[moveHistory.length-1];
+      const dt = last.t - first.t;
+      if(dt > 0 && dt < 200){
+        const vx = (last.x - first.x) / dt;
+        const vy = (last.y - first.y) / dt;
+        if(Math.hypot(vx,vy) > 0.05){
+          startMomentum(vx, vy);
+        }
+      }
+    }
+  }
 }
 wrap.addEventListener('pointerup', endPointer);
 wrap.addEventListener('pointercancel', endPointer);
@@ -771,6 +845,7 @@ let lastTap = 0;
 wrap.addEventListener('pointerup', e=>{
   const now = Date.now();
   if(now - lastTap < 300 && pointers.size === 0){
+    stopMomentum();
     const rect = wrap.getBoundingClientRect();
     const localX = e.clientX - rect.left, localY = e.clientY - rect.top;
     const worldX = (localX - tx)/scale, worldY = (localY - ty)/scale;
@@ -789,6 +864,7 @@ wrap.addEventListener('pointerup', e=>{
 /* mouse wheel zoom (desktop testing) */
 wrap.addEventListener('wheel', e=>{
   e.preventDefault();
+  stopMomentum();
   const rect = wrap.getBoundingClientRect();
   const localX = e.clientX - rect.left, localY = e.clientY - rect.top;
   const worldX = (localX - tx)/scale, worldY = (localY - ty)/scale;
@@ -802,6 +878,7 @@ wrap.addEventListener('wheel', e=>{
 }, {passive:false});
 
 document.getElementById('zoom-in').addEventListener('click', ()=>{
+  stopMomentum();
   const ww=wrap.clientWidth, wh=wrap.clientHeight;
   const newScale = clamp(scale*1.4, minScale, maxScale);
   tx = ww/2 - (ww/2 - tx)/scale*newScale;
@@ -811,6 +888,7 @@ document.getElementById('zoom-in').addEventListener('click', ()=>{
   setTimeout(()=>stage.style.transition='',260);
 });
 document.getElementById('zoom-out').addEventListener('click', ()=>{
+  stopMomentum();
   const ww=wrap.clientWidth, wh=wrap.clientHeight;
   const newScale = clamp(scale/1.4, minScale, maxScale);
   tx = ww/2 - (ww/2 - tx)/scale*newScale;
@@ -820,6 +898,7 @@ document.getElementById('zoom-out').addEventListener('click', ()=>{
   setTimeout(()=>stage.style.transition='',260);
 });
 document.getElementById('zoom-reset').addEventListener('click', ()=>{
+  stopMomentum();
   stage.style.transition='transform .35s ease';
   fitToScreen();
   setTimeout(()=>stage.style.transition='',360);
