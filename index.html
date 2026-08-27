@@ -265,6 +265,22 @@
     opacity: 1;
     transition: opacity .6s ease;
   }
+  #line-fab{
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom: calc(96px + var(--safe-bottom));
+    z-index:21; pointer-events:auto;
+    display:flex; align-items:center; gap:7px;
+    background: linear-gradient(135deg, #201c22, #17151a);
+    border: 1px solid var(--gold);
+    color: var(--gold-bright);
+    font-weight:700; font-size:12.5px;
+    padding:10px 18px; border-radius:999px;
+    box-shadow:0 8px 20px rgba(0,0,0,.4);
+    backdrop-filter: blur(6px);
+    white-space:nowrap;
+  }
+  #line-fab svg{ width:16px; height:16px; flex:none; }
+
   #reward{
     position:fixed; inset:0; z-index:60;
     display:none; align-items:center; justify-content:center;
@@ -334,10 +350,6 @@
     font-size:12.5px; padding:9px 22px; border-radius:999px;
     width:100%;
   }
-  #info-back-line{
-    background: linear-gradient(135deg, #06C755, #05a648);
-    border: none; color: #fff; font-weight:700;
-  }
 
   /* Lightbox (已集點時點擊，看清楚完整照片) */
   #lightbox{
@@ -404,6 +416,11 @@
   <div class="msg"><strong id="toast-title">集點成功！</strong><span id="toast-sub"></span></div>
 </div>
 
+<button id="line-fab">
+  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 5.79 2 10.5c0 2.9 1.73 5.46 4.36 7.02-.19.72-.7 2.62-.8 3.03-.13.5.18.5.38.36.16-.11 2.53-1.72 3.56-2.42.82.12 1.66.19 2.5.19 5.52 0 10-3.79 10-8.5S17.52 2 12 2z"/></svg>
+  回到LINE繼續集點
+</button>
+
 <div id="bottombar">
   <div id="zoom-controls">
     <button class="round-btn" id="zoom-in" aria-label="放大">＋</button>
@@ -430,7 +447,6 @@
     <div class="field"><span class="k">時間</span><span class="v" id="info-hours"></span></div>
     <div class="hint-row">前往店家掃描現場QR Code，完成數位體驗，即可解鎖圖鑑。</div>
     <button id="info-close">關閉</button>
-    <button id="info-back-line">回到LINE繼續集點</button>
   </div>
 </div>
 
@@ -616,13 +632,14 @@ function openInfo(spot){
   document.getElementById('info-hours').textContent = spot.hours || '待確認';
   document.getElementById('info-modal').classList.add('show');
 }
+function goBackToLine(){
+  // 直接跳轉回嘉義藝術體驗聯盟 LINE 官方帳號對話室
+  window.location.href = 'https://line.me/R/ti/p/@498xdptx';
+}
 document.getElementById('info-close').addEventListener('click', ()=>{
   document.getElementById('info-modal').classList.remove('show');
 });
-document.getElementById('info-back-line').addEventListener('click', ()=>{
-  // 直接跳轉回嘉義藝術體驗聯盟 LINE 官方帳號對話室
-  window.location.href = 'https://line.me/R/ti/p/@498xdptx';
-});
+document.getElementById('line-fab').addEventListener('click', goBackToLine);
 document.getElementById('info-modal').addEventListener('click', e=>{
   if(e.target.id === 'info-modal') e.currentTarget.classList.remove('show');
 });
@@ -714,8 +731,9 @@ function measureReserved(){
   const topbarH = document.getElementById('topbar').getBoundingClientRect().height;
   const rulesH = document.getElementById('rules-banner').getBoundingClientRect().height;
   const bottomH = document.getElementById('bottombar').getBoundingClientRect().height;
+  const lineFabH = document.getElementById('line-fab').getBoundingClientRect().height;
   reservedTop = topbarH + rulesH + 10;
-  reservedBottom = bottomH + 10;
+  reservedBottom = bottomH + lineFabH + 18;
 }
 
 function constrain(){
