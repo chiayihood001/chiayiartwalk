@@ -329,9 +329,14 @@
     border-top:1px dashed rgba(199,163,92,.3); padding-top:12px;
   }
   #info-modal button{
-    display:block; margin: 16px auto 0;
+    display:block; margin: 10px auto 0;
     background: transparent; color: var(--ink-dim); border:1px solid rgba(184,177,165,.4);
     font-size:12.5px; padding:9px 22px; border-radius:999px;
+    width:100%;
+  }
+  #info-back-line{
+    background: linear-gradient(135deg, #06C755, #05a648);
+    border: none; color: #fff; font-weight:700;
   }
 
   /* Lightbox (已集點時點擊，看清楚完整照片) */
@@ -360,37 +365,9 @@
     background: rgba(23,21,26,.85); border:1px solid rgba(199,163,92,.5);
     color: var(--ink); font-size:18px;
   }
-
-  /* Dev test drawer */
-  #devtab{
-    position:fixed; right:10px; bottom: calc(64px + var(--safe-bottom));
-    z-index:25; pointer-events:auto;
-    font-size:11px;
-  }
-  #devtoggle{
-    background: rgba(23,21,26,.85); border:1px dashed rgba(199,163,92,.5);
-    color: var(--ink-dim); border-radius:8px; padding:6px 10px;
-  }
-  #devpanel{
-    display:none;
-    position:absolute; right:0; bottom:34px;
-    width: 240px; max-height: 55vh; overflow:auto;
-    background: rgba(15,13,17,.97); border:1px solid rgba(199,163,92,.4);
-    border-radius:10px; padding:8px;
-  }
-  #devpanel.show{ display:block; }
-  #devpanel .row{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:5px 4px; border-bottom:1px dashed rgba(255,255,255,.08);
-    font-size:11px; color:var(--ink-dim);
-  }
-  #devpanel button{
-    background: rgba(199,163,92,.15); border:1px solid var(--gold);
-    color: var(--gold-bright); font-size:10.5px; padding:3px 8px; border-radius:6px;
-  }
-  #devpanel .row.done{ color: var(--gold-bright); }
-  #devreset{ width:100%; margin-top:6px; background:rgba(217,83,79,.15); border:1px solid var(--danger); color:#ff9b98; padding:6px; border-radius:6px; font-size:11px;}
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -451,8 +428,9 @@
     <h3 id="info-name"></h3>
     <div class="field"><span class="k">地址</span><span class="v" id="info-address"></span></div>
     <div class="field"><span class="k">時間</span><span class="v" id="info-hours"></span></div>
-    <div class="hint-row">前往店家完成體驗、掃描現場 QR code 即可解鎖照片</div>
+    <div class="hint-row">前往店家掃描現場QR Code，完成數位體驗，即可解鎖圖鑑。</div>
     <button id="info-close">關閉</button>
+    <button id="info-back-line">回到LINE繼續集點</button>
   </div>
 </div>
 
@@ -464,12 +442,69 @@
   </div>
 </div>
 
-<div id="devtab">
-  <button id="devtoggle">🧪 測試模擬</button>
-  <div id="devpanel"></div>
-</div>
-
 <script>
+/* =====================================================================
+   Firebase 設定
+   ⚠️ 請把下面 firebaseConfig 換成你自己 Firebase 專案「註冊網頁應用程式」
+   後拿到的那一整段設定值（apiKey / authDomain / projectId ...）。
+   換好之後，集點記錄就會自動同步到 Firestore，重整頁面、關閉分頁
+   都不會再清空（同一支手機/瀏覽器內）。
+   ===================================================================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyDwDjKEKWQNw9SWX0sAFaY0KHjDinuv2eQ",
+  authDomain: "chiayi-artwalk.firebaseapp.com",
+  projectId: "chiayi-artwalk",
+  storageBucket: "chiayi-artwalk.firebasestorage.app",
+  messagingSenderId: "893939997609",
+  appId: "1:893939997609:web:e7c980e702d2fe4584c2b8",
+  measurementId: "G-F7M7P340LF"
+};
+
+let db = null;
+try{
+  if(firebaseConfig.apiKey && !firebaseConfig.apiKey.includes('請貼上')){
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+  } else {
+    console.warn('尚未設定 firebaseConfig，目前僅在本機記憶體中集點（重整會清空）。');
+  }
+}catch(err){
+  console.warn('Firebase 初始化失敗，將以本機集點繼續運作：', err);
+}
+
+/* ===================== 裝置代號（不綁 LINE 身分，純裝置匿名 ID） ===================== */
+function getDeviceId(){
+  const KEY = 'cyArtwalkDeviceId';
+  let id = localStorage.getItem(KEY);
+  if(!id){
+    id = (crypto.randomUUID ? crypto.randomUUID() : 'dev-' + Date.now() + '-' + Math.random().toString(16).slice(2));
+    localStorage.setItem(KEY, id);
+  }
+  return id;
+}
+const deviceId = getDeviceId();
+
+function saveProgress(){
+  if(!db) return;
+  db.collection('visitors').doc(deviceId).set({
+    collected: Array.from(collected),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, {merge:true}).catch(err=> console.warn('雲端同步失敗（不影響本機集點）：', err));
+}
+
+async function loadProgress(){
+  if(!db) return [];
+  try{
+    const snap = await db.collection('visitors').doc(deviceId).get();
+    if(snap.exists){
+      return snap.data().collected || [];
+    }
+  }catch(err){
+    console.warn('讀取雲端集點記錄失敗，將以本機記錄繼續：', err);
+  }
+  return [];
+}
+
 /* ===================== 站點資料（依海報實際位置換算百分比座標） ===================== */
 const SPOTS = [
   {id:1,  name:"美街藝廊",                         left:8.382, top:25.383, w:14.194, h:10.097,
@@ -494,24 +529,24 @@ const SPOTS = [
     address:"嘉義市東區中山里啟明路271號一樓", hours:"一二三四五六 09:00-21:00／日 13:00-20:00"},
   {id:11, name:"諸羅設計塾",                        left:8.382, top:54.204, w:14.194, h:10.097,
     address:"嘉義市東區北門里興中街200-1號二樓", hours:"一二三四五 10:00-19:00（依IG公告為準，每月公休日詳見行事曆）"},
-  {id:12, name:"朝海鍊框店",                        left:25.538,top:54.204, w:14.194, h:10.097,
+  {id:12, name:"朝海裱框店",                        left:25.538,top:54.204, w:14.194, h:10.097,
     address:"嘉義市東區中央里公明路243號一樓", hours:"一二三四五六 09:00-18:00"},
   {id:13, name:"Coffee Pantry",                    left:42.638,top:54.204, w:14.194, h:10.097,
     address:"嘉義市東區中央里興中街134號一樓", hours:"一二三五六日 11:00-18:00"},
   {id:14, name:"Palette Matcha",                   left:59.793,top:54.204, w:14.194, h:10.097,
     address:"嘉義市東區中央里北榮街41號", hours:"三四五六日 12:00-18:00"},
-  {id:15, name:"二皿 Ershen",                       left:76.921,top:54.204, w:14.194, h:10.097,
+  {id:15, name:"二屾 Ershen",                       left:76.921,top:54.204, w:14.194, h:10.097,
     address:"嘉義市東區過溝里成仁街70號一樓", hours:"一二三四五六日 12:00-19:00"},
-  {id:16, name:"老鄉與香 Siang",                     left:8.382, top:68.674, w:14.194, h:10.097,
+  {id:16, name:"老娜與香 Siang",                     left:8.382, top:68.674, w:14.194, h:10.097,
     address:"嘉義市東區北門里興中街184號", hours:"三四五六日 13:00-18:00"},
-  {id:17, name:"曹璃玻璃藝術空間",                    left:25.538,top:68.674, w:14.194, h:10.097,
+  {id:17, name:"莤璃玻璃藝術空間",                    left:25.538,top:68.674, w:14.194, h:10.097,
     address:"嘉義市西區書院里蘭井街352號", hours:"預約制"},
   {id:18, name:"萬花工坊 WonderflorCrafts",          left:42.638,top:68.674, w:14.194, h:10.097,
     address:"嘉義市西區文化里西公有零售市場文創類第五區第21號", hours:"預約制"},
   {id:19, name:"三宅一室",                          left:59.793,top:68.674, w:14.194, h:10.097,
     address:"嘉義市西區北榮里國華街407號", hours:"一三四五 11:00-18:00／六 11:00-21:00"},
   {id:20, name:"高地物堂 × 野fun兒童創意製造所",       left:76.921,top:68.674, w:14.194, h:10.097,
-    address:"嘉義市東區林森里共和路420號一樓", hours:"一二三四五六 12:00-18:00"},
+    address:"嘉義市東區林森里共和路420號一樓", hours:"一二三四五六 12:00-18:00（預約制）"},
   {id:21, name:"口袋派對會所",                       left:34.088,top:82.985, w:14.194, h:10.097,
     address:"嘉義市東區朝陽里朝陽街55號一樓", hours:"一二三四五六日 10:00-20:30"},
   {id:22, name:"走心畫所",                          left:51.215,top:82.985, w:14.194, h:10.097,
@@ -584,6 +619,10 @@ function openInfo(spot){
 document.getElementById('info-close').addEventListener('click', ()=>{
   document.getElementById('info-modal').classList.remove('show');
 });
+document.getElementById('info-back-line').addEventListener('click', ()=>{
+  // 直接跳轉回嘉義藝術體驗聯盟 LINE 官方帳號對話室
+  window.location.href = 'https://line.me/R/ti/p/@498xdptx';
+});
 document.getElementById('info-modal').addEventListener('click', e=>{
   if(e.target.id === 'info-modal') e.currentTarget.classList.remove('show');
 });
@@ -637,7 +676,6 @@ function markCollected(id, {silent=false, focus=false} = {}){
   updateProgress();
   if(!already && !silent) showToast(spot.name);
   if(focus && el) focusOnSpot(spot);
-  refreshDevPanel();
   return !already;
 }
 
@@ -651,7 +689,8 @@ function handleIncomingURL(){
   if(loc){
     const id = parseInt(loc, 10);
     if(id >= 1 && id <= TOTAL){
-      markCollected(id, {focus:true});
+      const isNew = markCollected(id, {focus:true});
+      if(isNew) saveProgress();
     }
   }
 }
@@ -725,9 +764,15 @@ function focusOnSpot(spot){
   setTimeout(()=>{ stage.style.transition = ''; }, 600);
 }
 
+async function bootApp(){
+  const existing = await loadProgress();
+  existing.forEach(id => markCollected(id, {silent:true}));
+  handleIncomingURL();
+}
+
 window.addEventListener('load', ()=>{
-  if(poster.complete){ fitToScreen(); handleIncomingURL(); }
-  else poster.onload = ()=>{ fitToScreen(); handleIncomingURL(); };
+  if(poster.complete){ fitToScreen(); bootApp(); }
+  else poster.onload = ()=>{ fitToScreen(); bootApp(); };
 });
 window.addEventListener('resize', fitToScreen);
 
@@ -960,33 +1005,6 @@ document.getElementById('rules-toggle').addEventListener('click', ()=>{
 });
 
 setTimeout(()=>{ document.getElementById('hint').style.opacity = 0; }, 3800);
-
-/* ===================== 開發測試面板（正式上線前可整段刪除） ===================== */
-const devToggle = document.getElementById('devtoggle');
-const devPanel = document.getElementById('devpanel');
-function refreshDevPanel(){
-  if(!devPanel.classList.contains('show')) return;
-  devPanel.innerHTML = SPOTS.map(s=>{
-    const done = collected.has(s.id);
-    return `<div class="row ${done?'done':''}">
-      <span>${String(s.id).padStart(2,'0')} ${s.name.slice(0,8)}</span>
-      <button data-id="${s.id}">${done?'✓':'模擬'}</button>
-    </div>`;
-  }).join('') + `<button id="devreset">清空全部（僅本次）</button>`;
-  devPanel.querySelectorAll('button[data-id]').forEach(b=>{
-    b.addEventListener('click', ()=> markCollected(parseInt(b.dataset.id,10), {focus:true}));
-  });
-  document.getElementById('devreset').addEventListener('click', ()=>{
-    collected.clear();
-    document.querySelectorAll('.spot').forEach(el=>el.classList.remove('collected'));
-    updateProgress();
-    refreshDevPanel();
-  });
-}
-devToggle.addEventListener('click', ()=>{
-  devPanel.classList.toggle('show');
-  refreshDevPanel();
-});
 </script>
 </body>
 </html>
