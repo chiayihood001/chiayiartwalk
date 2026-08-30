@@ -405,7 +405,7 @@
 
 <div id="rules-banner" class="expanded">
   <button id="rules-toggle" aria-label="收合/展開玩法說明">
-    <span class="rules-main">集滿以下 22 家聯盟店家的圖鑑，可憑本頁至【三宅一室】兌換實體城市紋理圖鑑一張！</span>
+    <span class="rules-main">只要集滿以下 10 家聯盟店家的圖鑑，即可憑本頁至【三宅一室】兌換實體城市紋理圖鑑一張！</span>
     <span class="rules-sub">兌換時間請參考三宅一室公告至營業時間。兌換期限至 2026/10/31。</span>
     <span class="rules-chevron">︿</span>
   </button>
@@ -433,8 +433,8 @@
 <div id="reward">
   <div class="card">
     <svg width="56" height="56" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="none" stroke="#ffd76a" stroke-width="3"/><path d="M20 33l8 8 16-18" fill="none" stroke="#ffd76a" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    <h2>圖鑑完成！</h2>
-    <p>22 個城市紋理站點已全數點亮。<br>請將此畫面出示至【三宅一室】，兌換實體城市紋理圖鑑一張。<br><span style="color:var(--ink-dim); font-size:11.5px;">兌換時間請參考三宅一室公告營業時間，兌換期限至 2026/10/31。</span></p>
+    <h2>已達兌換資格！</h2>
+    <p>已集滿 10 家聯盟店家的圖鑑。<br>請將此畫面出示至【三宅一室】，兌換實體城市紋理圖鑑一張。<br><span style="color:var(--ink-dim); font-size:11.5px;">兌換時間請參考三宅一室公告營業時間，兌換期限至 2026/10/31。</span></p>
     <button id="reward-close">回到地圖</button>
   </div>
 </div>
@@ -569,6 +569,8 @@ const SPOTS = [
     address:"嘉義市東區過溝里延平街249號", hours:"一二四五六日 13:00-21:00（以IG官方限動為準，建議體驗前三天預約）"},
 ];
 const TOTAL = SPOTS.length;
+const REDEEM_THRESHOLD = 10;
+let rewardShown = false;
 
 /* ===================== 狀態（純前端 Demo：重整頁面即清空，不接資料庫） ===================== */
 let collected = new Set();
@@ -664,7 +666,8 @@ function updateProgress(){
   const circumference = 97.4;
   const offset = circumference - (collected.size/TOTAL)*circumference;
   ring.style.strokeDashoffset = offset;
-  if(collected.size >= TOTAL){
+  if(collected.size >= REDEEM_THRESHOLD && !rewardShown){
+    rewardShown = true;
     setTimeout(()=> document.getElementById('reward').classList.add('show'), 500);
   }
 }
